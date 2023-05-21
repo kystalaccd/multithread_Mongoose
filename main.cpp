@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <chrono>
 
 using namespace std;
 
@@ -24,10 +25,15 @@ static void* preThread(void* param){
     mg_queue_init(&d->queue, buf, sizeof(buf)); 
     cout<<"pre: "<<d->body.ptr<<endl;
     unique_lock<mutex> lck(mtx);
-    con.wait(lck,[]()->bool{return share_msg.length()>0;} );
-
-    mg_queue_printf(&d->queue, share_msg.c_str()); 
-
+    //con.wait(lck,[]()->bool{return share_msg.length()>0;});
+    con.wait_for(lck,chrono::milliseconds(500),[]()->bool{return share_msg.length()>0;});
+    if(share_msg.length()>0){
+        mg_queue_printf(&d->queue, share_msg.c_str()); 
+        share_msg.clear();
+    }
+    else{
+        mg_queue_printf(&d->queue, "time out!");
+    }
     
     // Wait until connection reads our message, then it is safe to quit
     while (d->queue.tail != d->queue.head) usleep(1000);    //待改进
