@@ -17,6 +17,11 @@ mutex mtx;
 condition_variable con;
 string share_msg;
 
+
+mutex th_mtx;
+condition_variable th_con;
+
+
 static void* preThread(void* param){
     struct thread_data* d=(struct thread_data* ) param;
     char buf[100];
@@ -30,7 +35,9 @@ static void* preThread(void* param){
 
     
     // Wait until connection reads our message, then it is safe to quit
-    while (d->queue.tail != d->queue.head) usleep(1000);    //待改进
+    //while (d->queue.tail != d->queue.head) usleep(1000);    //待改进
+    unique_lock<mutex> lck2{th_mtx};
+    th_con.wait(lck2, [d]()->bool{return d->queue.tail == d->queue.head;});
     MG_INFO(("done, cleaning up..."));
     free(d);
     return NULL;
@@ -48,7 +55,9 @@ static void* backThread(void* param){
     mg_queue_printf(&d->queue, "pre trans to back successfully!"); 
 
     // Wait until connection reads our message, then it is safe to quit
-    while (d->queue.tail != d->queue.head) usleep(1000);    //待改进
+    //while (d->queue.tail != d->queue.head) usleep(1000);    //待改进
+    unique_lock<mutex> lck2{th_mtx};
+    th_con.wait(lck2, [d]()->bool{return d->queue.tail == d->queue.head;});
     MG_INFO(("done, cleaning up..."));
     free(d);
     return NULL;
@@ -79,6 +88,7 @@ static void fn(struct mg_connection* c, int ev, void* ev_data, void* fn_data){
             mg_http_reply(c, 200, "", "%.*s\n", (int) len, buf);
             mg_queue_del(&d->queue, len);
             *(void**) c->data=NULL;
+            th_con.notify_one();
         }
     }
 }
